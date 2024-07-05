@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>India Toll Simulation by Lehar Tolani</title>
+    <!-- External CSS and JavaScript libraries -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        /* CSS styles for the page layout and elements */
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        #map {
+            height: 600px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        #log {
+            height: 200px;
+            overflow-y: scroll;
+            background-color: #2a2a2a;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+        h1 {
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        /* Custom styling for Leaflet popups */
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background-color: #2a2a2a;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <h1>India Toll Simulation by Lehar Tolani</h1>
+    <!-- Container for the map -->
+    <div id="map"></div>
+    <!-- Container for the log messages -->
+    <div id="log"></div>
+
+    <script>
+        // Initialize the map centered on India
+        var map = L.map('map').setView([23.5937, 78.9629], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            className: 'map-tiles'
+        }).addTo(map);
+
+        // Apply dark mode styling to the map
+        document.querySelector('.leaflet-container').style.background = '#303030';
+
+        // Parse route and toll gate data from server-side rendered variables
+        var route = JSON.parse('{{ route | safe }}');
+        var tollGates = JSON.parse('{{ toll_gates | safe }}');
+
+        // Add the route to the map
+        L.polyline(route.map(point => [point[1], point[2]]), {color: '#00aaff', weight: 3}).addTo(map);
+
+        // Custom icon for toll gates
+        var tollIcon = L.icon({
+            iconUrl: 'https://cdn0.iconfinder.com/data/icons/small-n-flat/24/678111-map-marker-512.png',
+            iconSize: [30, 30],
+            iconAnchor: [15, 30],
+            popupAnchor: [0, -30]
+        });
+
+        // Add toll gates to the map
+        for (var gateName in tollGates) {
+            L.marker(tollGates[gateName].location, {icon: tollIcon}).addTo(map)
+                .bindPopup(gateName);
+        }
+
+        // Object to store vehicle markers
+        var vehicles = {};
+
+        // Initialize Socket.IO connection
+        var socket = io();
+
+        // Event handler for new vehicles
+        socket.on('new_vehicle', function(data) {
+            vehicles[data.id] = L.marker(data.position).addTo(map);
+            vehicles[data.id].bindPopup(data.id + ' (' + data.type + ')<br>From: ' + data.start + '<br>To: ' + data.end);
+        });
+
+        // Event handler for vehicle updates
+        socket.on('vehicle_update', function(data) {
+            if (vehicles[data.id]) {
+                vehicles[data.id].setLatLng(data.position);
+                vehicles[data.id].setPopupContent(data.id + ' (' + data.type + ')<br>From: ' + data.start + '<br>To: ' + data.end);
+            }
+        });
+
+        // Event handler for toll payments
+        socket.on('toll_paid', function(data) {
+            var logDiv = document.getElementById('log');
+            logDiv.innerHTML = '<p>' + data.id + ' (' + data.type + ') paid ₹' + data.charge + ' at ' + data.gate +
+                               ' (Total: ₹' + data.total + ')<br>Route: ' + data.start + ' to ' + data.end +
+                               '</p>' + logDiv.innerHTML;
+        });
+    </script>
+</body>
+</html>
